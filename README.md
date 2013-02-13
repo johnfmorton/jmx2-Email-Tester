@@ -38,10 +38,10 @@ To install it, copy the "emailTester" directory to your web server. The "_saved_
 
 JMX2 Email Tester incorporates a variety of tools including:
 
-Swiftmailer, http://swiftmailer.org/
-SPYC, https://github.com/mustangostang/spyc/jj
-InlineStyle, https://github.com/christiaan/InlineStyle
-CssSelector, https://github.com/symfony/CssSelector
-Email-Blueprints, https://github.com/mailchimp/Email-Blueprints
-Bootstrap, https://github.com/twitter/bootstrap
-Glyphicons, http://glyphicons.com/
+- Swiftmailer, http://swiftmailer.org/
+- SPYC, https://github.com/mustangostang/spyc/jj
+- InlineStyle, https://github.com/christiaan/InlineStyle
+- CssSelector, https://github.com/symfony/CssSelector
+- Email-Blueprints, https://github.com/mailchimp/Email-Blueprints
+- Bootstrap, https://github.com/twitter/bootstrap
+- Glyphicons, http://glyphicons.com/
