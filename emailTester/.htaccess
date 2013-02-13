@@ -1,0 +1,5 @@
+RewriteEngine On
+
+RewriteRule ^(_config) - [F,L]
+RewriteRule ^(.*).yml$ - [F,L]
+RewriteRule ^(.*).yaml$ - [F,L]
