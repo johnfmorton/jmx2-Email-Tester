@@ -14,13 +14,13 @@ The first file contains the HTML in the exact format you see in the Email Tester
 
 The second file will have the styles in your style block "inlined" for each element in your document. This file has the phrase "_inline" in the file name.
 
-Each file will be also use a timestamp in the file name. This same timestamp is appended to the email that is sent to your selected recipients as well. This is done to help you identify the HTML associated with various test email have sent during your debugging process. 
+Each file will use a timestamp in the file name in addition to the "_org" or "_inline" phrase. The timestamp is also appended to the subject line of the email that is sent to your selected recipients. This is done to help you identify the HTML associated with various test email have sent during your debugging process. 
 
-There are 2 other options in the interface that will save your work. The first is simply called "Save"; it will save the 2 versions of your email as described above but not attempt to send any email. The second option is "Save & Preview" which will save 2 versions of your email as described above and then open the inlined version of the HTML in a new browser window. Since the browser is a much better way to view HTML documents, testing HTML emails in email programs is the best way to debug them. 
+There are 2 other options in the interface that will save your work. The first is simply called "Save"; it will save the 2 versions of your email as described above but not attempt to send any email. The second option is "Save & Preview" which will save 2 versions of your email as described above and then open the inlined version of the HTML in a new browser window. Since the browser has greater capabilities of displaying HTML documents though, testing HTML emails in email programs is the best way to debug them.
 
 ## Other features
 
-The Email Tester will use your own SMTP information for sending emails. I use it with Gmail but any SMTP server should work. Set your SMTP settings in the "_config" directory in the "settings.php" file. If you use Google's 2 factor authentication, Email Tester will need it's own application specific password.
+The Email Tester will use your own SMTP information for sending emails. I use it with Gmail but any SMTP server should work. Set your SMTP settings in the "_config" directory in the "settings.php" file. If you use Google's 2-factor authentication, Email Tester will need it's own application specific password instead of your master password. (That's a good thing!)
 
 All saved emails are saved in the "_saved_email_file" directory. If you reload the browser window, Email Tester will pull the most recent non-inlined version of the email you're working on from this directory. 
 
