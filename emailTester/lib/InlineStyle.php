@@ -40,11 +40,6 @@ class InlineStyle
     private $_dom;
 
     /**
-     * @var \DOMXPath
-     */
-    private $_dom_xpath;
-
-    /**
      * Prepare all the necessary objects
      *
      * @param string $html
@@ -52,10 +47,13 @@ class InlineStyle
     public function __construct($html = '')
     {
         if ($html) {
-            if (file_exists($html))
+            if ($html instanceof \DOMDocument) {
+                $this->loadDomDocument(clone $html);
+            } else if (strlen($html) <= PHP_MAXPATHLEN && file_exists($html)) {
                 $this->loadHTMLFile($html);
-            else
+            } else {
                 $this->loadHTML($html);
+            }
         }
     }
 
@@ -76,15 +74,33 @@ class InlineStyle
      */
     public function loadHTML($html)
     {
-        $this->_dom = new \DOMDocument();
-        $this->_dom->formatOutput = true;
+        $dom = new \DOMDocument();
+        $dom->formatOutput = true;
 
         // strip illegal XML UTF-8 chars
         // remove all control characters except CR, LF and tab
         $html = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/u', '', $html); // 00-09, 11-31, 127
 
-        $this->_dom->loadHTML($html);
-        $this->_dom_xpath = new \DOMXPath($this->_dom);
+        // The @ symbol is added to ignore warning messages generated from when the HTML is loaded in
+        // Added by John Morton on Sept 13, 2014 for use in the JMX2 Email Tester only
+        @$dom->loadHTML($html);
+        $this->loadDomDocument($dom);
+    }
+
+    /**
+     * Load the HTML as a DOMDocument directly
+     *
+     * @param \DOMDocument $domDocument
+     */
+    public function loadDomDocument(\DOMDocument $domDocument)
+    {
+        $this->_dom = $domDocument;
+        foreach ($this->_getNodesForCssSelector('[style]') as $node) {
+            $node->setAttribute(
+                'inlinestyle-original-style',
+                $node->getAttribute('style')
+            );
+        }
     }
 
     /**
@@ -108,11 +124,15 @@ class InlineStyle
         return $this;
     }
 
+    /**
+     * @param string $sel Css Selector
+     * @return array|\DOMNodeList|\DOMElement[]
+     */
     private function _getNodesForCssSelector($sel)
     {
         try {
             $xpathQuery = CssSelector::toXPath($sel);
-            return $this->_dom_xpath->query($xpathQuery);
+            return $this->_getDomXpath()->query($xpathQuery);
         }
         catch(ParseException $e) {
             // ignore css rule parse exceptions
@@ -139,13 +159,8 @@ class InlineStyle
                     array();
 
                 $current = $this->_mergeStyles($current, $style);
-                $st = array();
 
-                foreach($current as $prop => $val) {
-                    $st[] = "{$prop}:{$val}";
-                }
-
-                $node->setAttribute("style", implode(";", $st));
+                $node->setAttribute("style", $this->_arrayToStyle($current));
             }
         }
 
@@ -159,49 +174,72 @@ class InlineStyle
      */
     public function getHTML()
     {
-        return $this->_dom->saveHTML();
+        $clone = clone $this;
+        foreach ($clone->_getNodesForCssSelector('[inlinestyle-original-style]') as $node) {
+            $current = $node->hasAttribute("style") ?
+                $this->_styleToArray($node->getAttribute("style")) :
+                array();
+            $original = $node->hasAttribute("inlinestyle-original-style") ?
+                $this->_styleToArray($node->getAttribute("inlinestyle-original-style")) :
+                array();
+
+            $current = $clone->_mergeStyles($current, $original);
+
+            $node->setAttribute("style", $this->_arrayToStyle($current));
+            $node->removeAttribute('inlinestyle-original-style');
+        }
+
+        return $clone->_dom->saveHTML();
     }
 
     /**
      * Recursively extracts the stylesheet nodes from the DOMNode
      *
+     * This cannot be done with XPath or a CSS selector because the order in
+     * which the elements are found matters
+     *
      * @param \DOMNode $node leave empty to extract from the whole document
      * @param string $base The base URI for relative stylesheets
      * @return array the extracted stylesheets
      */
-    public function extractStylesheets($node = null, $base = '')
+    public function extractStylesheets($node = null, $base = '', $devices = array('all', 'screen', 'handheld'))
     {
         if(null === $node) {
             $node = $this->_dom;
         }
 
         $stylesheets = array();
+        if($node->hasChildNodes()) {
+            $removeQueue = array();
+            /** @var $child \DOMElement */
+            foreach($node->childNodes as $child) {
+                $nodeName = strtolower($child->nodeName);
+                if($nodeName === "style" && $this->isForAllowedMediaDevice($child->getAttribute('media'), $devices)) {
+                    $stylesheets[] = $child->nodeValue;
+                    $removeQueue[] = $child;
+                } else if($nodeName === "link" && strtolower($child->getAttribute('rel')) === 'stylesheet' && $this->isForAllowedMediaDevice($child->getAttribute('media'), $devices)) {
+                    if($child->hasAttribute("href")) {
+                        $href = $child->getAttribute("href");
 
-        if(strtolower($node->nodeName) === "style") {
-            $stylesheets[] = $node->nodeValue;
-            $node->parentNode->removeChild($node);
-        }
-        else if(strtolower($node->nodeName) === "link") {
-            if($node->hasAttribute("href")) {
-                $href = $node->getAttribute("href");
+                        if($base && false === strpos($href, "://")) {
+                            $href = "{$base}/{$href}";
+                        }
 
-                if($base && false === strpos($href, "://")) {
-                    $href = "{$base}/{$href}";
-                }
+                        $ext = @file_get_contents($href);
 
-                $ext = @file_get_contents($href);
-
-                if($ext) {
-                    $stylesheets[] = $ext;
-                    $node->parentNode->removeChild($node);
+                        if($ext) {
+                            $removeQueue[] = $child;
+                            $stylesheets[] = $ext;
+                        }
+                    }
+                } else {
+                    $stylesheets = array_merge($stylesheets,
+                        $this->extractStylesheets($child, $base));
                 }
             }
-        }
 
-        if($node->hasChildNodes()) {
-            foreach($node->childNodes as $child) {
-                $stylesheets = array_merge($stylesheets,
-                    $this->extractStylesheets($child, $base));
+            foreach ($removeQueue as $child) {
+                $child->parentNode->removeChild($child);
             }
         }
 
@@ -218,7 +256,7 @@ class InlineStyle
     {
         $stylesheets = array();
 
-        $nodes = $this->_dom_xpath->query($xpathQuery);
+        $nodes = $this->_getDomXpath()->query($xpathQuery);
         foreach ($nodes as $node)
         {
             $stylesheets[] = $node->nodeValue;
@@ -266,7 +304,7 @@ class InlineStyle
                 return $a[$i] < $b[$i] ? -1 : 1;
             }
         }
-        return 1;
+        return -1;
     }
 
     public function getScoreForSelector($selector)
@@ -292,13 +330,24 @@ class InlineStyle
                 $props = trim(trim($props), ";");
                 //Don't parse empty props
                 if(!trim($props))continue;
-                preg_match('#^([-a-z0-9\*]+):(.*)$#i', $props, $matches);
-                list($match, $prop, $val) = $matches;
-                $styles[$prop] = $val;
+                //Only match valid CSS rules
+                if (preg_match('#^([-a-z0-9\*]+):(.*)$#i', $props, $matches) && isset($matches[0], $matches[1], $matches[2])) {
+                    list(, $prop, $val) = $matches;
+                    $styles[$prop] = $val;
+                }
             }
         }
 
         return $styles;
+    }
+
+    private function _arrayToStyle($array)
+    {
+        $st = array();
+        foreach($array as $prop => $val) {
+            $st[] = "{$prop}:{$val}";
+        }
+        return \implode(';', $st);
     }
 
     /**
@@ -324,10 +373,34 @@ class InlineStyle
     {
         // strip comments
         $s = preg_replace('!/\*[^*]*\*+([^/][^*]*\*+)*/!','', $s);
-        
+
         // strip keyframes rules
         $s = preg_replace('/@[-|keyframes].*?\{.*?\}[ \r\n]*\}/s', '', $s);
 
         return $s;
+    }
+
+    private function _getDomXpath()
+    {
+        return new \DOMXPath($this->_dom);
+    }
+
+    public function __clone()
+    {
+        $this->_dom = clone $this->_dom;
+    }
+
+    private function isForAllowedMediaDevice($mediaAttribute, array $devices)
+    {
+        $mediaAttribute = strtolower($mediaAttribute);
+        $mediaDevices = explode(',', $mediaAttribute);
+
+        foreach ($mediaDevices as $device) {
+            $device = trim($device);
+            if (!$device || in_array($device, $devices)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
